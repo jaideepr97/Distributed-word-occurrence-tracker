@@ -1,76 +1,246 @@
-import java.io.BufferedReader;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.Socket;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.Scanner;
 
-public class Worker implements Runnable {
+public class Worker{
 
-    public void run() {
-
-        while(true)
+    int workerId;
+    int heartbeatSocket;
+    int mainSocket;
+    Socket workerSocket;
+    DataOutputStream workerOutputStream;
+    BufferedReader bufferedReader;
+    public Worker(int _workerId, int _heartbeatSocket, int _mainSocket)
+    {
+        workerId = _workerId;
+        heartbeatSocket = _heartbeatSocket;
+        mainSocket = _mainSocket;
+        workerSocket = null;
+        workerOutputStream = null;
+        bufferedReader = null;
+    }
+    public void getSocket() throws IOException
+    {
+        workerSocket = new Socket("localhost", this.mainSocket);
+        workerOutputStream = new DataOutputStream(workerSocket.getOutputStream());
+        bufferedReader = new BufferedReader(new InputStreamReader(workerSocket.getInputStream()));
+    }
+    public void closeSocket() throws IOException
+    {
+        if(workerSocket != null) {
+            workerSocket.close();
+        }
+        if(workerOutputStream != null) {
+            workerOutputStream.close();
+        }
+        if(bufferedReader != null) {
+            bufferedReader.close();
+        }
+    }
+    public boolean wordCount(String inputFilename, String outputFilename) throws IOException
+    {
+        Reader reader = null;
+        Scanner scanner = null;
+        HashMap<String, Integer> map = new HashMap();
+        DataOutputStream outStream = null;
+        FileOutputStream fos = null;
+        PriorityQueue<String[]> pq = new PriorityQueue<>((a, b) -> Integer.parseInt(b[1]) - Integer.parseInt(a[1]));
+        try
         {
+            System.out.println(inputFilename);
+            reader = new FileReader(inputFilename);
+            scanner = new Scanner(reader);
+            while(scanner.hasNext())
+            {
+                String s = scanner.next();
+                map.put(s, map.getOrDefault(s, 0)+1);
+            }
+            for(Map.Entry<String, Integer> entry : map.entrySet())
+            {
+                pq.offer(new String[]{entry.getKey(), Integer.toString(entry.getValue())});
+            }
+            //change filename
+            fos = new FileOutputStream(outputFilename);
+            outStream = new DataOutputStream(new BufferedOutputStream(fos));
+            while(!pq.isEmpty())
+            {
+                String[] val = pq.poll();
+                StringBuilder sb = new StringBuilder();
+                sb.append(val[0]);
+                sb.append(" : ");
+                sb.append(val[1]);
+                if(!pq.isEmpty())
+                {
+                    sb.append("\n");
+                }
+                outStream.writeBytes(sb.toString());
+            }
+            return true;
+        }
+        catch (FileNotFoundException e)
+        {
+            System.out.println("File not found!!");
+            return false;
+        }
+        catch(IOException e)
+        {
+            System.out.println(e.getStackTrace());
+            return false;
+        }
+        finally {
+            if(reader != null)
+            {
+                reader.close();
+            }
+            if(scanner != null)
+            {
+                scanner.close();
+            }
+            if(outStream != null)
+            {
+                outStream.close();
+            }
+            if(fos != null)
+            {
+                fos.close();
+            }
+        }
+    }
+    public void startWordCount()
+    {
+        try {
+            this.getSocket();
+            while(true) {
+                String filepath = null;
+                filepath = bufferedReader.readLine();
+                if(filepath != null)
+                {
+                    String[] paths = filepath.split(" ");
+                    String inputFilepath = paths[0];
+                    String outputFilepath = paths[1];
+                    System.out.println(inputFilepath);
+                    System.out.println(outputFilepath);
+                    if(this.wordCount(inputFilepath, outputFilepath))
+                    {
+                        this.workerOutputStream.writeBytes(Integer.toString(this.workerId)+"\n");
+                    }
+                    else
+                    {
+                        this.workerOutputStream.writeBytes(-1+"\n");
+                    }
+                }
+            }
+        }
+        catch (IOException e)
+        {
+            System.out.println(e.getStackTrace());
+        }
+        finally {
             try
             {
-                System.out.println("Worker Main Thread");
-                Thread.sleep(5000);
+                System.out.println("Closing Socket");
+                this.closeSocket();
             }
-            catch(InterruptedException e)
+            catch(IOException e)
             {
                 System.out.println(e.getStackTrace());
             }
-
         }
     }
+    public static void main(String[] args){
 
-    public static void main(String[] args) {
-
-        WorkerHeartbeat hb = new WorkerHeartbeat(0, 50001);
+        if(args.length < 3) {
+            System.out.println("Insufficient Arguments");
+            return;
+        }
+        Worker w = new Worker(Integer.parseInt(args[0]), Integer.parseInt(args[1]), Integer.parseInt(args[2]));
+        WorkerHeartbeat hb = new WorkerHeartbeat(w.workerId, w.heartbeatSocket);
+        //System.out.println("Starting heartbeat");
         Thread heartBeatThread = new Thread(hb);
-        Worker w = new Worker();
-        Thread mainThread = new Thread(w);
         heartBeatThread.start();
-        mainThread.start();
+        //System.out.println("Starting Word Count");
+        w.startWordCount();
     }
+
 }
 
 class WorkerHeartbeat implements Runnable{
 
     private int workerId;
     private int socket;
+    Socket workerHeartbeatSocket;
+    DataOutputStream workerHeartbeatOutputStream;
+    private volatile boolean running;
+    public void stopThread()
+    {
+        running = false;
+    }
     public WorkerHeartbeat(int _workerId, int _socket)
     {
         workerId = _workerId;
         socket = _socket;
+        workerHeartbeatSocket = null;
+        workerHeartbeatOutputStream = null;
+        running = true;
+    }
+    public void getSocket() throws IOException
+    {
+        workerHeartbeatSocket = new Socket("localhost", socket);
+        workerHeartbeatOutputStream = new DataOutputStream(workerHeartbeatSocket.getOutputStream());
+    }
+    public void closeSocket() throws IOException
+    {
+        if(workerHeartbeatSocket != null) {
+            workerHeartbeatSocket.close();
+        }
+        if(workerHeartbeatOutputStream != null) {
+            workerHeartbeatOutputStream.close();
+        }
     }
     public void sendMessage() throws IOException
     {
-        Socket sc = null; // Need to initialize as we are closing in finally block
-        DataOutputStream dout = null;
+
         try{
-            //Binding socket to 50001 port number on localhost
-            sc = new Socket("localhost", socket);
-            dout = new DataOutputStream(sc.getOutputStream());
-            dout.writeBytes(Integer.toString(workerId) + "\n");
+            //System.out.println("Socket:" + socket + ", Worket ID:" + workerId);
+            //System.out.println("Inside sendMessage():" +  workerId);
+            workerHeartbeatOutputStream.writeBytes(Integer.toString(workerId)+"\n");
         }
         catch (IOException e){
             e.printStackTrace();
         }
-        finally {
-            sc.close();
-            dout.close();
-        }
     }
-    public void run() {
+    public void run()  {
         System.out.println("Running Worker Heartbeat:" +  workerId);
         try {
-            while(true) {
-                System.out.println("Worker Heartbeat Thread: " + workerId + ", " + "I'm alive");
+            getSocket();
+            while(running) {
+                sendMessage();
+                //System.out.println("Worker Heartbeat Thread: " + workerId + ", " + "I'm alive");
                 // Let the thread sleep for a while.
                 Thread.sleep(3 * 1000);
             }
-        } catch (InterruptedException e) {
-            System.out.println("Worker Heartbeat Thread: " +  workerId + " interrupted.");
+        }
+        catch (IOException e)
+        {
+            System.out.println(e.getStackTrace());
+        }
+        catch(InterruptedException e)
+        {
+            System.out.print("Worker: " +workerId+ "interrupted");
+        }
+        finally {
+            try
+            {
+                System.out.println("Closing Socket");
+                closeSocket();
+            }
+            catch(IOException e)
+            {
+                System.out.println(e.getStackTrace());
+            }
         }
         System.out.println("Worker Heartbeat Thread: " +  workerId + " exiting.");
     }
