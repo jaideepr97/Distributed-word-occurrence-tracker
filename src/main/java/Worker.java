@@ -8,23 +8,23 @@ import java.util.Scanner;
 public class Worker{
 
     int workerId;
-    int heartbeatSocket;
-    int mainSocket;
+    int heartbeatSocketValue;
+    int mainSocketValue;
     Socket workerSocket;
     DataOutputStream workerOutputStream;
     BufferedReader bufferedReader;
     public Worker(int _workerId, int _heartbeatSocket, int _mainSocket)
     {
         workerId = _workerId;
-        heartbeatSocket = _heartbeatSocket;
-        mainSocket = _mainSocket;
+        heartbeatSocketValue = _heartbeatSocket;
+        mainSocketValue = _mainSocket;
         workerSocket = null;
         workerOutputStream = null;
         bufferedReader = null;
     }
     public void getSocket() throws IOException
     {
-        workerSocket = new Socket("localhost", this.mainSocket);
+        workerSocket = new Socket("localhost", this.mainSocketValue);
         workerOutputStream = new DataOutputStream(workerSocket.getOutputStream());
         bufferedReader = new BufferedReader(new InputStreamReader(workerSocket.getInputStream()));
     }
@@ -157,7 +157,7 @@ public class Worker{
             return;
         }
         Worker w = new Worker(Integer.parseInt(args[0]), Integer.parseInt(args[1]), Integer.parseInt(args[2]));
-        WorkerHeartbeat hb = new WorkerHeartbeat(w.workerId, w.heartbeatSocket);
+        WorkerHeartbeat hb = new WorkerHeartbeat(w.workerId, w.heartbeatSocketValue);
         //System.out.println("Starting heartbeat");
         Thread heartBeatThread = new Thread(hb);
         heartBeatThread.start();

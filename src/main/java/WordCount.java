@@ -7,8 +7,9 @@ import java.net.Socket;
 import java.util.*;
 import java.io.*;
 
-public class WordCount implements Master{
+public class WordCount implements Master, Runnable{
 
+    int numWorkers;
     HashMap<Integer, String> map;
     HashSet<String> pending;
     HashSet<String> complete;
@@ -18,8 +19,12 @@ public class WordCount implements Master{
     private static final String outputDir = "/Users/aayushgupta/IdeaProjects/project-2-group-2/tests/";
     static String inputDir = "/Users/aayushgupta/IdeaProjects/project-2-group-2/tests/";
     private static final String JAVA_FILE_LOCATION = "/Users/aayushgupta/IdeaProjects/project-2-group-2/src/main/java/";
+    private static final int HEARTBEAT_PORT_START = 50001;
+    private static final int MAIN_PORT_START = 55001;
+    List<MasterHeartbeat> masterHeartbeatList;
     public WordCount(int workerNum, String[] filenames) throws IOException {
 
+        numWorkers = workerNum;
         workers = new boolean[workerNum];
         Arrays.fill(workers, false);
         map = new HashMap();
@@ -41,10 +46,8 @@ public class WordCount implements Master{
     public static void main(String[] args) throws Exception {
         WordCount w = new WordCount(2, new String[]{inputDir+"king-james-version-bible.txt"
                 ,inputDir+"war-and-peace.txt"});
-        if(w.compileWorker() == 0)
-        {
-            w.createWorker();
-        }
+        w.compileWorker();
+        w.createWorker();
     }
 
     public void run() {
@@ -87,6 +90,34 @@ public class WordCount implements Master{
         try
         {
             //Starting Master Heartbeat
+            int n = this.numWorkers;
+            int id = 0;
+            int lastHeartbeatPort = HEARTBEAT_PORT_START;
+            int lastMainPort = MAIN_PORT_START;
+            /*
+            while(n > 0)
+            {
+                while(!Utilities.checkPortAvailability(lastHeartbeatPort))
+                {
+                    lastHeartbeatPort++;
+                }
+                while(!Utilities.checkPortAvailability(lastMainPort))
+                {
+                    lastMainPort++;
+                }
+
+                String[] command = new String[]{
+                        "java",
+                        "Worker",
+                        Integer.toString(id),
+                        Integer.toString(lastHeartbeatPort),
+                        Integer.toString(lastMainPort)};
+                ProcessBuilder processBuilder = new ProcessBuilder(command);
+                processBuilder.directory(new File(JAVA_FILE_LOCATION)).inheritIO();
+                Process process = processBuilder.start();
+                n--;
+            }
+             */
             MasterHeartbeat hb = new MasterHeartbeat(0, 50001);
             Thread heartBeatThread = new Thread(hb);
             heartBeatThread.start();
@@ -102,7 +133,10 @@ public class WordCount implements Master{
             if(process.isAlive())
                 process.destroyForcibly();
              */
-            this.test(55001, 0, inputDir+"king-james-version-bible.txt", outputDir+"out.txt");
+            if(this.test(55001, 0, inputDir+"king-james-version-bible.txt", outputDir+"out.txt"))
+            {
+                process.destroyForcibly();
+            }
 
         }
         catch (IOException e)
@@ -153,10 +187,16 @@ class MasterHeartbeat implements Runnable
 {
     int socket;
     int workerID;
+    volatile boolean running;
     public MasterHeartbeat(int _workerID, int _socket)
     {
         socket = _socket;
         workerID = _workerID;
+        running = true;
+    }
+    public void stopThread()
+    {
+        running = false;
     }
     public void listen() throws IOException
     {
@@ -167,7 +207,7 @@ class MasterHeartbeat implements Runnable
             sc = new ServerSocket(socket);
             scc = sc.accept();
             String line = "";
-            while(true){
+            while(running){
                 Thread.sleep(3000);
                 bfr = new BufferedReader(new InputStreamReader(scc.getInputStream()));
                 String data = null;
