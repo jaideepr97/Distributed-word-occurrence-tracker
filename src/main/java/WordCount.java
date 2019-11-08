@@ -282,54 +282,25 @@ class MasterIO implements Runnable
     {
         running = false;
     }
-    public void sendIO()
+    public void sendIO() throws IOException
     {
         try {
             serverSocket = new ServerSocket(socketValue);
             socket = serverSocket.accept();
             outputStream = new DataOutputStream(socket.getOutputStream());
             while (running) {
+                String inputFilepath = null;
                 if (lock.tryLock()) {
-                    lock.lock();
                     try
                     {
                         Pending pending = Pending.getInstance();
                         ActiveWorkers activeWorkers = ActiveWorkers.getInstance();
                         if (pending.queue.isEmpty() || !activeWorkers.map.containsKey(this.workerID)) {
                             System.out.println("if,"+workerID);
-                            lock.unlock();
-                            stopThread();
                         } else {
-                            String inputFilepath = pending.queue.poll();
                             System.out.println("else,"+workerID);
-                            lock.unlock();
-                            String outputFilepath = inputFilepath.substring(inputdir.length());
-                            String filepath = inputFilepath + " " + outputDir+"out_"+outputFilepath;
-                            outputStream.writeBytes(filepath + "\n");
-                            bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                            String data = null;
-                            data = bufferedReader.readLine();
-                            if (data == null) {
-                                //handle dead condition
-                                System.out.println("Worker:" + workerID + " dead");
-                                stopThread();
-                            } else if (data.equals("-1")) {
-
-                                System.out.println("Worker failed");
-                            } else {
-                                System.out.println("Worker successful");
-                                continue;
-                            }
-                            ;
-                            //unlock
-                            //send worker
-                            //receive ack
-                            //
+                            inputFilepath = pending.queue.poll();
                         }
-                    }
-                    catch(Exception e)
-                    {
-                        System.out.println(e.getMessage());
                     }
                     finally {
                         lock.unlock();
@@ -337,6 +308,27 @@ class MasterIO implements Runnable
 
                 } else {
                     Thread.sleep(1000);
+                }
+                if(inputFilepath == null)
+                {
+                    break;
+                }
+                String outputFilepath = inputFilepath.substring(inputdir.length());
+                String filepath = inputFilepath + " " + outputDir+"out_"+outputFilepath;
+                outputStream.writeBytes(filepath + "\n");
+                bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                String data = null;
+                data = bufferedReader.readLine();
+                if (data == null) {
+                    //handle dead condition
+                    System.out.println("Worker:" + workerID + " dead");
+                    break;
+                } else if (data.equals("-1")) {
+
+                    System.out.println("Worker failed");
+                } else {
+                    System.out.println("Worker successful");
+                    continue;
                 }
             }
         }
@@ -349,7 +341,18 @@ class MasterIO implements Runnable
             System.out.println("sendIO - 3");
         }
         finally {
-            lock.unlock();
+            if(outputStream!= null)
+            {
+                outputStream.close();
+            }
+            if(socket != null)
+            {
+                socket.close();
+            }
+            if(serverSocket != null)
+            {
+                serverSocket.close();
+            }
         }
     }
     public void run()
@@ -360,7 +363,7 @@ class MasterIO implements Runnable
         }
         catch(Exception e)
         {
-            System.out.println(e.getMessage());
+            System.out.println("Main IO - run() "+e.getStackTrace());
         }
     }
 
@@ -402,25 +405,21 @@ class MasterHeartbeat implements Runnable
                 {
                     //handle dead condition
                     System.out.println("Worker:"+ workerID + " dead");
-                    try
+                    if(lock.tryLock())
                     {
-                        if(lock.tryLock())
+                        try
                         {
                             ActiveWorkers activeWorkers = ActiveWorkers.getInstance();
                             activeWorkers.map.remove(workerID);
-                            stopThread();
+                            break;
                         }
-                        else
-                        {
-                            Thread.sleep(1000);
+                        finally {
+                            lock.unlock();
                         }
                     }
-                    catch(InterruptedException e)
+                    else
                     {
-                        System.out.println(e.getStackTrace());
-                    }
-                    finally {
-                        lock.unlock();
+                        Thread.sleep(1000);
                     }
                     //remove from active wrokers
                     //stop master heartbeat

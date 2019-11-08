@@ -50,7 +50,7 @@ public class Worker{
         PriorityQueue<String[]> pq = new PriorityQueue<>((a, b) -> Integer.parseInt(b[1]) - Integer.parseInt(a[1]));
         try
         {
-            System.out.println(inputFilename);
+            //System.out.println(inputFilename);
             reader = new FileReader(inputFilename);
             scanner = new Scanner(reader);
             while(scanner.hasNext())
@@ -121,9 +121,9 @@ public class Worker{
                     String[] paths = filepath.split(" ");
                     String inputFilepath = paths[0];
                     String outputFilepath = paths[1];
-                    System.out.println(workerId);
-                    System.out.println(inputFilepath);
-                    System.out.println(outputFilepath);
+                    //System.out.println(workerId);
+                    System.out.println(workerId+inputFilepath);
+                    System.out.println(workerId+outputFilepath);
                     if(this.wordCount(inputFilepath, outputFilepath))
                     {
                         this.workerOutputStream.writeBytes(Integer.toString(this.workerId)+"\n");
