@@ -1,53 +1,121 @@
 import java.io.IOException;
 import java.io.PrintStream;
-import java.lang.reflect.Field;
-import java.net.DatagramSocket;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
 import java.io.*;
+import java.util.concurrent.locks.ReentrantLock;
+class Pending
+{
+    // static variable single_instance of type Singleton
+    private static Pending single_instance = null;
+
+    // variable of type String
+    public Queue<String> queue;
+
+    // private constructor restricted to this class itself
+    private Pending()
+    {
+        queue = new LinkedList<>();
+    }
+
+    // static method to create instance of Singleton class
+    public static Pending getInstance()
+    {
+        if (single_instance == null)
+            single_instance = new Pending();
+
+        return single_instance;
+    }
+}
+class ActiveWorkers
+{
+    // static variable single_instance of type Singleton
+    private static ActiveWorkers single_instance = null;
+
+    // variable of type String
+    public HashMap<Integer, Process> map;
+
+    // private constructor restricted to this class itself
+    private ActiveWorkers()
+    {
+        map = new HashMap<>();
+    }
+
+    // static method to create instance of Singleton class
+    public static ActiveWorkers getInstance()
+    {
+        if (single_instance == null)
+            single_instance = new ActiveWorkers();
+
+        return single_instance;
+    }
+}
 
 public class WordCount implements Master, Runnable{
 
     int numWorkers;
     HashMap<Integer, String> map;
-    HashSet<String> pending;
+    //HashSet<String> pending;
     HashSet<String> complete;
     HashSet<String> processing;
     List<String> total;
-    boolean[] workers;
+    boolean[] activeWorkers;
     private static final String outputDir = "/Users/aayushgupta/IdeaProjects/project-2-group-2/tests/";
-    static String inputDir = "/Users/aayushgupta/IdeaProjects/project-2-group-2/tests/";
+    static final String inputDir = "/Users/aayushgupta/IdeaProjects/project-2-group-2/tests/";
     private static final String JAVA_FILE_LOCATION = "/Users/aayushgupta/IdeaProjects/project-2-group-2/src/main/java/";
     private static final int HEARTBEAT_PORT_START = 50001;
-    private static final int MAIN_PORT_START = 55001;
+    private static final int IO_PORT_START = 55001;
+
     List<MasterHeartbeat> masterHeartbeatList;
+
+    int curWorkerID;
+    int lastHeartbeatPort;
+    int lastIOPort;
     public WordCount(int workerNum, String[] filenames) throws IOException {
 
         numWorkers = workerNum;
-        workers = new boolean[workerNum];
-        Arrays.fill(workers, false);
+        activeWorkers = new boolean[workerNum];
+        Arrays.fill(activeWorkers, false);
         map = new HashMap();
-        pending = new HashSet<>();
+        //pending = new HashSet<>();
         total = new LinkedList<>();
+        Pending pending = Pending.getInstance();
         for(String s : filenames)
         {
             total.add(s);
-            pending.add(s);
+            pending.queue.add(s);
         }
         complete = new HashSet<>();
         processing = new HashSet();
+        curWorkerID = 0;
+        lastHeartbeatPort = HEARTBEAT_PORT_START;
+        lastIOPort = IO_PORT_START;
     }
 
     public void setOutputStream(PrintStream out) {
 
     }
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) throws IOException{
         WordCount w = new WordCount(2, new String[]{inputDir+"king-james-version-bible.txt"
-                ,inputDir+"war-and-peace.txt"});
-        w.compileWorker();
-        w.createWorker();
+                ,inputDir+"war-and-peace.txt", inputDir+"test-2.txt"});
+        try
+        {
+
+            w.compileWorker();
+            int n = w.numWorkers;
+            while(n > 0)
+            {
+                w.createWorker();
+                n--;
+            }
+        }
+        catch(Exception e)
+        {
+            System.out.println("Exception in main()");
+        }
+
     }
 
     public void run() {
@@ -57,8 +125,10 @@ public class WordCount implements Master, Runnable{
 
     }
 
-    public Collection<Process> getActiveProcess() {
-        return new LinkedList<>();
+public Collection<Process> getActiveProcess() {
+
+        ActiveWorkers activeWorkers = ActiveWorkers.getInstance();
+        return new LinkedList<>(activeWorkers.map.values());
     }
 
     public int compileWorker()
@@ -90,41 +160,40 @@ public class WordCount implements Master, Runnable{
         try
         {
             //Starting Master Heartbeat
-            int n = this.numWorkers;
-            int id = 0;
-            int lastHeartbeatPort = HEARTBEAT_PORT_START;
-            int lastMainPort = MAIN_PORT_START;
-            /*
-            while(n > 0)
+            lastHeartbeatPort = HEARTBEAT_PORT_START;
+            lastIOPort = IO_PORT_START;
+            while(!Utilities.checkPortAvailability(lastHeartbeatPort))
             {
-                while(!Utilities.checkPortAvailability(lastHeartbeatPort))
-                {
-                    lastHeartbeatPort++;
-                }
-                while(!Utilities.checkPortAvailability(lastMainPort))
-                {
-                    lastMainPort++;
-                }
-
-                String[] command = new String[]{
-                        "java",
-                        "Worker",
-                        Integer.toString(id),
-                        Integer.toString(lastHeartbeatPort),
-                        Integer.toString(lastMainPort)};
-                ProcessBuilder processBuilder = new ProcessBuilder(command);
-                processBuilder.directory(new File(JAVA_FILE_LOCATION)).inheritIO();
-                Process process = processBuilder.start();
-                n--;
+                lastHeartbeatPort++;
             }
-             */
-            MasterHeartbeat hb = new MasterHeartbeat(0, 50001);
+            while(!Utilities.checkPortAvailability(lastIOPort))
+            {
+                lastIOPort++;
+            }
+
+            MasterHeartbeat hb = new MasterHeartbeat(curWorkerID, lastHeartbeatPort);
             Thread heartBeatThread = new Thread(hb);
             heartBeatThread.start();
-            String[] command = new String[]{"java", "Worker", "0", "50001", "55001"};
+
+            String[] command = new String[]{
+                    "java",
+                    "Worker",
+                    Integer.toString(curWorkerID),
+                    Integer.toString(lastHeartbeatPort),
+                    Integer.toString(lastIOPort)};
             ProcessBuilder processBuilder = new ProcessBuilder(command);
             processBuilder.directory(new File(JAVA_FILE_LOCATION)).inheritIO();
             Process process = processBuilder.start();
+
+            MasterIO mio =  new MasterIO(curWorkerID, lastIOPort);
+            Thread masterIOThread = new Thread(mio);
+            masterIOThread.start();
+
+            //this.activeWorkers[curWorkerID] = true;
+            ActiveWorkers activeWorkers = ActiveWorkers.getInstance();
+            activeWorkers.map.put(curWorkerID, process);
+            curWorkerID++;
+
             //process.waitFor();
             //Process p = Runtime.getRuntime().exec("java Worker 0 50001")
             /*
@@ -133,10 +202,13 @@ public class WordCount implements Master, Runnable{
             if(process.isAlive())
                 process.destroyForcibly();
              */
+            /*
             if(this.test(55001, 0, inputDir+"king-james-version-bible.txt", outputDir+"out.txt"))
             {
                 process.destroyForcibly();
             }
+
+             */
 
         }
         catch (IOException e)
@@ -183,16 +255,130 @@ public class WordCount implements Master, Runnable{
         }
     }
 }
+class MasterIO implements Runnable
+{
+    int socketValue;
+    int workerID;
+    ReentrantLock lock;
+    volatile boolean running;
+    ServerSocket serverSocket ;
+    Socket socket ;
+    BufferedReader bufferedReader ;
+    DataOutputStream outputStream ;
+    private final String inputdir = "/Users/aayushgupta/IdeaProjects/project-2-group-2/tests/";
+    private static final String outputDir = "/Users/aayushgupta/IdeaProjects/project-2-group-2/tests/";
+    public MasterIO(int _workerID, int _socket)
+    {
+        socketValue = _socket;
+        workerID = _workerID;
+        running = true;
+        lock = new ReentrantLock();
+        serverSocket = null;
+        socket = null;
+        bufferedReader = null;
+        outputStream = null;
+    }
+    public void stopThread()
+    {
+        running = false;
+    }
+    public void sendIO()
+    {
+        try {
+            serverSocket = new ServerSocket(socketValue);
+            socket = serverSocket.accept();
+            outputStream = new DataOutputStream(socket.getOutputStream());
+            while (running) {
+                if (lock.tryLock()) {
+                    lock.lock();
+                    try
+                    {
+                        Pending pending = Pending.getInstance();
+                        ActiveWorkers activeWorkers = ActiveWorkers.getInstance();
+                        if (pending.queue.isEmpty() || !activeWorkers.map.containsKey(this.workerID)) {
+                            System.out.println("if,"+workerID);
+                            lock.unlock();
+                            stopThread();
+                        } else {
+                            String inputFilepath = pending.queue.poll();
+                            System.out.println("else,"+workerID);
+                            lock.unlock();
+                            String outputFilepath = inputFilepath.substring(inputdir.length());
+                            String filepath = inputFilepath + " " + outputDir+"out_"+outputFilepath;
+                            outputStream.writeBytes(filepath + "\n");
+                            bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                            String data = null;
+                            data = bufferedReader.readLine();
+                            if (data == null) {
+                                //handle dead condition
+                                System.out.println("Worker:" + workerID + " dead");
+                                stopThread();
+                            } else if (data.equals("-1")) {
+
+                                System.out.println("Worker failed");
+                            } else {
+                                System.out.println("Worker successful");
+                                continue;
+                            }
+                            ;
+                            //unlock
+                            //send worker
+                            //receive ack
+                            //
+                        }
+                    }
+                    catch(Exception e)
+                    {
+                        System.out.println(e.getMessage());
+                    }
+                    finally {
+                        lock.unlock();
+                    }
+
+                } else {
+                    Thread.sleep(1000);
+                }
+            }
+        }
+        catch (IOException e)
+        {
+            System.out.println("sendIO - 2");
+        }
+        catch(InterruptedException e)
+        {
+            System.out.println("sendIO - 3");
+        }
+        finally {
+            lock.unlock();
+        }
+    }
+    public void run()
+    {
+        try
+        {
+            sendIO();
+        }
+        catch(Exception e)
+        {
+            System.out.println(e.getMessage());
+        }
+    }
+
+
+}
+
 class MasterHeartbeat implements Runnable
 {
     int socket;
     int workerID;
     volatile boolean running;
+    ReentrantLock lock;
     public MasterHeartbeat(int _workerID, int _socket)
     {
         socket = _socket;
         workerID = _workerID;
         running = true;
+        lock = new ReentrantLock();
     }
     public void stopThread()
     {
@@ -216,6 +402,29 @@ class MasterHeartbeat implements Runnable
                 {
                     //handle dead condition
                     System.out.println("Worker:"+ workerID + " dead");
+                    try
+                    {
+                        if(lock.tryLock())
+                        {
+                            ActiveWorkers activeWorkers = ActiveWorkers.getInstance();
+                            activeWorkers.map.remove(workerID);
+                            stopThread();
+                        }
+                        else
+                        {
+                            Thread.sleep(1000);
+                        }
+                    }
+                    catch(InterruptedException e)
+                    {
+                        System.out.println(e.getStackTrace());
+                    }
+                    finally {
+                        lock.unlock();
+                    }
+                    //remove from active wrokers
+                    //stop master heartbeat
+                    //end
                 }
                 else {
                     //ok

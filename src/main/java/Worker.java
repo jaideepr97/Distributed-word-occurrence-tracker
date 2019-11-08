@@ -121,6 +121,7 @@ public class Worker{
                     String[] paths = filepath.split(" ");
                     String inputFilepath = paths[0];
                     String outputFilepath = paths[1];
+                    System.out.println(workerId);
                     System.out.println(inputFilepath);
                     System.out.println(outputFilepath);
                     if(this.wordCount(inputFilepath, outputFilepath))
