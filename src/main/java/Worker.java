@@ -47,7 +47,7 @@ public class Worker{
         HashMap<String, Integer> map = new HashMap();
         DataOutputStream outStream = null;
         FileOutputStream fos = null;
-        PriorityQueue<String[]> pq = new PriorityQueue<>((a, b) -> Integer.parseInt(b[1]) - Integer.parseInt(a[1]));
+        PriorityQueue<String[]> pq = new PriorityQueue<>(1, new Utilities.CustomComparator());
         try
         {
             //System.out.println(inputFilename);
@@ -72,10 +72,7 @@ public class Worker{
                 sb.append(val[0]);
                 sb.append(" : ");
                 sb.append(val[1]);
-                if(!pq.isEmpty())
-                {
-                    sb.append("\n");
-                }
+                sb.append("\n");
                 outStream.writeBytes(sb.toString());
             }
             return true;
@@ -118,6 +115,11 @@ public class Worker{
                 filepath = bufferedReader.readLine();
                 if(filepath != null)
                 {
+                    if(filepath.equals("-1"))
+                    {
+                        System.out.println("Exiting Worker:" + workerId);
+                        return;
+                    }
                     String[] paths = filepath.split(" ");
                     String inputFilepath = paths[0];
                     String outputFilepath = paths[1];
@@ -126,7 +128,7 @@ public class Worker{
                     System.out.println(workerId+outputFilepath);
                     if(this.wordCount(inputFilepath, outputFilepath))
                     {
-                        this.workerOutputStream.writeBytes(Integer.toString(this.workerId)+"\n");
+                        this.workerOutputStream.writeBytes(this.workerId+"\n");
                     }
                     else
                     {
@@ -164,6 +166,7 @@ public class Worker{
         heartBeatThread.start();
         //System.out.println("Starting Word Count");
         w.startWordCount();
+        hb.stopThread();
     }
 
 }
@@ -207,7 +210,7 @@ class WorkerHeartbeat implements Runnable{
         try{
             //System.out.println("Socket:" + socket + ", Worket ID:" + workerId);
             //System.out.println("Inside sendMessage():" +  workerId);
-            workerHeartbeatOutputStream.writeBytes(Integer.toString(workerId)+"\n");
+            workerHeartbeatOutputStream.writeBytes(workerId+"\n");
         }
         catch (IOException e){
             e.printStackTrace();

@@ -2,8 +2,24 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.DatagramSocket;
 import java.net.ServerSocket;
+import java.util.Comparator;
 
 public class Utilities {
+
+    public static class CustomComparator implements Comparator<String[]>
+    {
+        public int compare(String[] a, String[] b)
+        {
+            if(Integer.parseInt(a[1]) == Integer.parseInt(b[1]))
+            {
+                return a[0].compareTo(b[0]);
+            }
+            else
+            {
+                return Integer.parseInt(b[1]) - Integer.parseInt(a[1]);
+            }
+        }
+    }
 
     public static synchronized long getPidOfProcess(Process p) {
         long pid = -1;
