@@ -1,5 +1,6 @@
 import java.io.*;
 import java.net.Socket;
+import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.PriorityQueue;
@@ -51,11 +52,13 @@ public class Worker{
         try
         {
             //System.out.println(inputFilename);
-            reader = new FileReader(inputFilename);
+            //reader = new FileReader(inputFilename);
+            reader = new InputStreamReader(new FileInputStream(inputFilename), "UTF-8");
             scanner = new Scanner(reader);
+            scanner.useDelimiter("\\s+");
             while(scanner.hasNext())
             {
-                String s = scanner.next();
+                String s = scanner.next().replace("\t", "").trim();
                 map.put(s, map.getOrDefault(s, 0)+1);
             }
             for(Map.Entry<String, Integer> entry : map.entrySet())
@@ -222,7 +225,7 @@ class WorkerHeartbeat implements Runnable{
             getSocket();
             while(running) {
                 sendMessage();
-                //System.out.println("Worker Heartbeat Thread: " + workerId + ", " + "I'm alive");
+                System.out.println("Worker Heartbeat Thread: " + workerId + ", " + "I'm alive");
                 // Let the thread sleep for a while.
                 Thread.sleep(3 * 1000);
             }

@@ -4,6 +4,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
 import java.io.*;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.ReentrantLock;
 class Pending
 {
@@ -20,7 +21,7 @@ class Pending
     }
 
     // static method to create instance of Singleton class
-    public static Pending getInstance()
+    public static synchronized Pending getInstance()
     {
         if (single_instance == null)
             single_instance = new Pending();
@@ -43,7 +44,7 @@ class ActiveWorkers
     }
 
     // static method to create instance of Singleton class
-    public static ActiveWorkers getInstance()
+    public static synchronized ActiveWorkers getInstance()
     {
         if (single_instance == null)
             single_instance = new ActiveWorkers();
@@ -66,7 +67,7 @@ class Processing
     }
 
     // static method to create instance of Singleton class
-    public static Processing getInstance()
+    public static synchronized Processing getInstance()
     {
         if (single_instance == null)
             single_instance = new Processing();
@@ -89,7 +90,7 @@ class InactiveWorkers
     }
 
     // static method to create instance of Singleton class
-    public static InactiveWorkers getInstance()
+    public static synchronized InactiveWorkers getInstance()
     {
         if (single_instance == null)
             single_instance = new InactiveWorkers();
@@ -149,10 +150,10 @@ public class WordCount implements Master, Runnable{
 
     public static void main(String[] args) throws IOException{
 
-        WordCount w = new WordCount(3, new String[]{inputDir+"king-james-version-bible.txt"
-                ,inputDir+"war-and-peace.txt", inputDir+"test-2.txt"});
+      WordCount w = new WordCount(1, new String[]{inputDir+"king-james-version-bible.txt"
+                ,inputDir+"war-and-peace.bin", inputDir+"big.txt"});
+        //WordCount w = new WordCount(1, new String[]{inputDir+"dummy.txt"});
         w.run();
-
     }
 
     public void run() {
@@ -169,7 +170,7 @@ public class WordCount implements Master, Runnable{
             boolean flag = false;
             while(true)
             {
-                Thread.sleep(3000);
+                Thread.sleep(5000);
                 System.out.println("Try:" + i++);
                 if(lock.tryLock())
                 {
@@ -179,6 +180,7 @@ public class WordCount implements Master, Runnable{
                         Pending pending = Pending.getInstance();
                         ActiveWorkers activeWorkers = ActiveWorkers.getInstance();
                         inactive = new HashSet<Integer>(InactiveWorkers.getInstance().set);
+                        System.out.println("Processing:" +processing.set.size()+ " "+"Pending:"+pending.queue.size());
                         if(pending.queue.isEmpty() && processing.set.isEmpty())
                         {
                             System.out.println("Starting merge");
@@ -247,7 +249,8 @@ public boolean merge() throws IOException
         {
             if(f.isHidden()) continue;
             int i=0;
-            reader = new FileReader(f);
+            //reader = new FileReader(f);
+            reader = new InputStreamReader(new FileInputStream(f), "UTF-8");
             scanner = new Scanner(reader);
             scanner.useDelimiter("\n");
             System.out.println(f);
@@ -273,16 +276,18 @@ public boolean merge() throws IOException
         {
             String[] val = pq.poll();
             StringBuilder sb = new StringBuilder();
-            sb.append(val[0]);
-            sb.append(" : ");
             sb.append(val[1]);
+            sb.append(" : ");
+            sb.append(val[0]);
             if(!pq.isEmpty())
             {
                 sb.append("\n");
             }
-            //this.outputstream.println(sb.toString());
+            //this.outputstream.print(sb.toString());
             outStream.writeBytes(sb.toString());
         }
+        //this.outputstream.print("\n");
+        for(File f : paths) f.delete();
         return true;
     }
     catch (FileNotFoundException e)
@@ -380,49 +385,46 @@ public Collection<Process> getActiveProcess() {
         }
 
     }
-    public void createWorker(){
+    public void createWorker() {
+        ReentrantLock lock = new ReentrantLock();
+        if (lock.tryLock()) {
+            try {
+                //Starting Master Heartbeat
+                lastHeartbeatPort = HEARTBEAT_PORT_START;
+                lastIOPort = IO_PORT_START;
+                while (!Utilities.checkPortAvailability(lastHeartbeatPort)) {
+                    lastHeartbeatPort++;
+                }
+                while (!Utilities.checkPortAvailability(lastIOPort)) {
+                    lastIOPort++;
+                }
 
-        try
-        {
-            //Starting Master Heartbeat
-            lastHeartbeatPort = HEARTBEAT_PORT_START;
-            lastIOPort = IO_PORT_START;
-            while(!Utilities.checkPortAvailability(lastHeartbeatPort))
-            {
-                lastHeartbeatPort++;
-            }
-            while(!Utilities.checkPortAvailability(lastIOPort))
-            {
-                lastIOPort++;
-            }
+                String[] command = new String[]{
+                        "java",
+                        "Worker",
+                        Integer.toString(curWorkerID),
+                        Integer.toString(lastHeartbeatPort),
+                        Integer.toString(lastIOPort)};
+                ProcessBuilder processBuilder = new ProcessBuilder(command);
+                processBuilder.directory(new File(JAVA_FILE_LOCATION)).inheritIO();
+                MasterHeartbeat hb = new MasterHeartbeat(curWorkerID, lastHeartbeatPort);
+                Thread heartBeatThread = new Thread(hb);
+                heartBeatThread.start();
+                Process process = processBuilder.start();
 
-            MasterHeartbeat hb = new MasterHeartbeat(curWorkerID, lastHeartbeatPort);
-            Thread heartBeatThread = new Thread(hb);
-            heartBeatThread.start();
+                ActiveWorkers activeWorkers = ActiveWorkers.getInstance();
+                activeWorkers.map.put(curWorkerID, process);
 
-
-            String[] command = new String[]{
-                    "java",
-                    "Worker",
-                    Integer.toString(curWorkerID),
-                    Integer.toString(lastHeartbeatPort),
-                    Integer.toString(lastIOPort)};
-            ProcessBuilder processBuilder = new ProcessBuilder(command);
-            processBuilder.directory(new File(JAVA_FILE_LOCATION)).inheritIO();
-            Process process = processBuilder.start();
-
-            ActiveWorkers activeWorkers = ActiveWorkers.getInstance();
-            activeWorkers.map.put(curWorkerID, process);
-
-            MasterIO mio =  new MasterIO(curWorkerID, lastIOPort);
-            Thread masterIOThread = new Thread(mio);
-            masterIOThread.start();
-
-            //this.activeWorkers[curWorkerID] = true;
+                MasterIO mio = new MasterIO(curWorkerID, lastIOPort);
+                Thread masterIOThread = new Thread(mio);
+                masterIOThread.start();
 
 
-            //process.waitFor();
-            //Process p = Runtime.getRuntime().exec("java Worker 0 50001")
+                //this.activeWorkers[curWorkerID] = true;
+
+
+                //process.waitFor();
+                //Process p = Runtime.getRuntime().exec("java Worker 0 50001")
             /*
             Thread.sleep(10000);
             process.destroy();
@@ -436,11 +438,10 @@ public Collection<Process> getActiveProcess() {
             }
 
              */
+            } catch (IOException e) {
+                System.out.println(e.getStackTrace());
+            }
 
-        }
-        catch (IOException e)
-        {
-            System.out.println(e.getStackTrace());
         }
     }
     public boolean test(int socket, int workerID, String inputFilepath, String outFilepath) throws IOException
@@ -515,12 +516,15 @@ class MasterIO implements Runnable
             serverSocket = new ServerSocket(socketValue);
             socket = serverSocket.accept();
             outputStream = new DataOutputStream(socket.getOutputStream());
+            Semaphore semaphore = new Semaphore(1);
             while (running) {
                 String inputFilepath = null;
                 int counter = 3;
                 while(counter > 0)
                 {
                     if (lock.tryLock()) {
+                    //synchronized (this){
+                    //semaphore.acquire();
                         try
                         {
                             Pending pending = Pending.getInstance();
@@ -528,18 +532,27 @@ class MasterIO implements Runnable
                             ActiveWorkers activeWorkers = ActiveWorkers.getInstance();
                             if (pending.queue.isEmpty() || !activeWorkers.map.containsKey(this.workerID)) {
                                 System.out.println("if,"+workerID);
+                                break;
                             } else {
                                 System.out.println("else,"+workerID);
+                                System.out.println("Pending size before:"+pending.queue.size() + " thread:" + workerID);
                                 inputFilepath = pending.queue.poll();
+                                if(inputFilepath == null) break;
+                                System.out.println("Pending size after:"+pending.queue.size()+ " thread:" + workerID);
+                                System.out.println("Processing size before:"+processing.set.size()+ " thread:" + workerID);
                                 processing.set.add(inputFilepath);
+
+                                System.out.println("Processing size after:"+processing.set.size()+ " thread:" + workerID);
                             }
                             break;
                         }
                         finally {
-                            lock.unlock();
+                            //lock.unlock();
+                            semaphore.release();
                         }
 
-                    } else {
+                    }
+                    else {
                         counter--;
                         Thread.sleep(1000);
                     }
@@ -549,8 +562,9 @@ class MasterIO implements Runnable
                     outputStream.writeBytes("-1" + "\n");
                     break;
                 }
-                String outputFilepath = inputFilepath.substring(inputdir.length());
-                String filepath = inputFilepath + " " + outputDir+"out_"+outputFilepath;
+
+                String outputFilepath = inputFilepath.replaceAll("[^a-zA-Z0-9]", "")+".txt";
+                String filepath = inputFilepath + " " + outputDir+outputFilepath;
                 outputStream.writeBytes(filepath + "\n");
                 bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 String data = null;
@@ -564,6 +578,7 @@ class MasterIO implements Runnable
                         {
                             try
                             {
+                                System.out.print("Inside dead condition"+ " thread:" + workerID);
                                 Processing processing = Processing.getInstance();
                                 Pending pending = Pending.getInstance();
                                 processing.set.remove(inputFilepath);
@@ -590,8 +605,11 @@ class MasterIO implements Runnable
                         {
                             try
                             {
+
                                 Processing processing = Processing.getInstance();
+                                System.out.println("processing, size now(successful):  " + processing.set.size()+ " thread:" + workerID );
                                 processing.set.remove(inputFilepath);
+                                System.out.println("Removed from processing, size now(successful):  " + processing.set.size()+ " thread:" + workerID );
                                 break;
                             }
                             finally {
