@@ -18,7 +18,7 @@ public class FormatTest {
 
     @Parameters
     public static Iterable<Object> data() {
-        return Arrays.asList("simple", "random");
+        return Arrays.asList("random");
     }
 
     @Test
