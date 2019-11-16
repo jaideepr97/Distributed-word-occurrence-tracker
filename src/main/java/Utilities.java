@@ -2,7 +2,6 @@ import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.lang.reflect.Field;
 import java.net.DatagramSocket;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -10,6 +9,7 @@ import java.util.Comparator;
 
 public class Utilities {
 
+    //Custom comparator for sorting the words
     public static class CustomComparator implements Comparator<String[]>
     {
         public int compare(String[] a, String[] b)
@@ -24,7 +24,7 @@ public class Utilities {
             }
         }
     }
-
+    //A test method which was used for unit testing
     public static boolean test(int socket, int workerID, String inputFilepath, String outFilepath) throws IOException
     {
         ServerSocket sc = null;
@@ -63,7 +63,7 @@ public class Utilities {
             bfr.close();
         }
     }
-
+    //A utility method to check available ports
     public static boolean checkPortAvailability(int port) {
         if (port < 0 || port > 65535) {
             throw new IllegalArgumentException("Invalid start port: " + port);

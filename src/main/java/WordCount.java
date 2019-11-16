@@ -7,6 +7,7 @@ import java.io.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
+//Singleton queue to store the pending files
 class Pending
 {
     // static variable single_instance of type Singleton
@@ -30,6 +31,7 @@ class Pending
         return single_instance;
     }
 }
+//Singleton set to store the active workers
 class ActiveWorkers
 {
     // static variable single_instance of type Singleton
@@ -53,6 +55,7 @@ class ActiveWorkers
         return single_instance;
     }
 }
+//Singleton map to store the files being processed
 class Processing
 {
     // static variable single_instance of type Singleton
@@ -76,6 +79,7 @@ class Processing
         return single_instance;
     }
 }
+//Singleton set to store the inactive workers
 class InactiveWorkers
 {
     // static variable single_instance of type Singleton
@@ -108,7 +112,6 @@ public class WordCount implements Master, Runnable{
     List<String> total;
     private static final String outputDir = "/Users/aayushgupta/IdeaProjects/project-2-group-2/out/";
     private static final String finalOutputDir = "/Users/aayushgupta/IdeaProjects/project-2-group-2/finalout/";
-    static final String inputDir = "/Users/aayushgupta/IdeaProjects/project-2-group-2/tests/";
     private static final String JAVA_FILE_LOCATION = "/Users/aayushgupta/IdeaProjects/project-2-group-2/src/main/java/";
     private static final int HEARTBEAT_PORT_START = 50001;
     private static final int IO_PORT_START = 55001;
@@ -119,7 +122,7 @@ public class WordCount implements Master, Runnable{
     int lastIOPort;
 
 
-    public WordCount(int workerNum, String[] filenames) throws IOException {
+    public WordCount(int workerNum, String[] filenames){
 
         numWorkers = workerNum;
         map = new HashMap();
@@ -282,7 +285,14 @@ public boolean merge() throws IOException
             {
                 sb.append("\n");
             }
-            outStream.writeBytes(sb.toString());
+            this.outputstream.print(sb.toString());
+            //Uncomment this to write to file
+            // outStream.writeBytes(sb.toString());
+        }
+        this.outputstream.print("\n");
+        for(File f : paths)
+        {
+            f.delete();
         }
         return true;
     }
@@ -509,7 +519,7 @@ class MasterIO implements Runnable
                 bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 String data = null;
                 data = bufferedReader.readLine();
-                if (data == null || data.equals("-1")) {
+                if (data == null || data.equals("-1") || data.equals("-2")) {
                     counter = 3;
                     while(counter > 0)
                     {
@@ -523,7 +533,9 @@ class MasterIO implements Runnable
                                 synchronized (processing.map) {
                                     String filePath = processing.map.get(workerID);
                                     processing.map.remove(workerID);
-                                    pending.queue.offer(filePath);
+                                    if(data != null && !data.equals("-1")) {
+                                        pending.queue.offer(filePath);
+                                    }
                                     break;
                                 }
                             }
