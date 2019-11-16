@@ -1,10 +1,8 @@
 import java.io.*;
 import java.net.Socket;
-import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.PriorityQueue;
-import java.util.Scanner;
 
 public class Worker{
 
@@ -52,7 +50,6 @@ public class Worker{
         PriorityQueue<String[]> pq = new PriorityQueue<>(1, new Utilities.CustomComparator());
         try
         {
-            //System.out.println(inputFilename);
             file = new FileReader(inputFilename);
             reader = new BufferedReader(file);
             String line = null;
@@ -63,22 +60,11 @@ public class Worker{
                     if(w.length() > 0)
                         map.put(w, map.getOrDefault(w, 0)+1);
             }
-            /*
-            while(scanner.hasNext())
-            {
-                String s = scanner.next().replace("\t", "").trim();
-                map.put(s, map.getOrDefault(s, 0)+1);
-            }
-
-             */
             for(Map.Entry<String, Integer> entry : map.entrySet())
             {
                 pq.offer(new String[]{entry.getKey(), Integer.toString(entry.getValue())});
             }
-            //change filename
             writer = new BufferedWriter(new FileWriter(outputFilename));
-            //fos = new FileOutputStream(outputFilename);
-            //outStream = new DataOutputStream(new BufferedOutputStream(fos));
             while(!pq.isEmpty())
             {
                 String[] val = pq.poll();
@@ -87,7 +73,6 @@ public class Worker{
                 sb.append(" : ");
                 sb.append(val[1]);
                 sb.append("\n");
-                //outStream.writeBytes(sb.toString());
                 writer.write(sb.toString());
             }
             return true;
@@ -142,7 +127,6 @@ public class Worker{
                     String[] paths = filepath.split(" ");
                     String inputFilepath = paths[0];
                     String outputFilepath = paths[1];
-                    //System.out.println(workerId);
                     System.out.println(workerId+inputFilepath);
                     System.out.println(workerId+outputFilepath);
                     if(this.wordCount(inputFilepath, outputFilepath))
@@ -179,18 +163,9 @@ public class Worker{
             return;
         }
         Worker w = new Worker(Integer.parseInt(args[0]), Integer.parseInt(args[1]), Integer.parseInt(args[2]));
-        /*
-        if(w.workerId == 1)
-        {
-            System.out.println("Worker(main): Returning: "+w.workerId);
-            return;
-        }
-         */
         WorkerHeartbeat hb = new WorkerHeartbeat(w.workerId, w.heartbeatSocketValue);
-        //System.out.println("Starting heartbeat");
         Thread heartBeatThread = new Thread(hb);
         heartBeatThread.start();
-        //System.out.println("Starting Word Count");
         w.startWordCount();
         hb.stopThread();
     }

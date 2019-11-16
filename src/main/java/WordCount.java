@@ -4,10 +4,8 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
 import java.io.*;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 class Pending
 {
@@ -114,7 +112,7 @@ public class WordCount implements Master, Runnable{
     private static final String JAVA_FILE_LOCATION = "/Users/aayushgupta/IdeaProjects/project-2-group-2/src/main/java/";
     private static final int HEARTBEAT_PORT_START = 50001;
     private static final int IO_PORT_START = 55001;
-    ReentrantLock lock;
+    static ReentrantLock lock;
     private PrintStream outputstream;
     int curWorkerID;
     int lastHeartbeatPort;
@@ -153,15 +151,6 @@ public class WordCount implements Master, Runnable{
 
     public static void main(String[] args) throws IOException{
 
-//      WordCount w = new WordCount(2, new String[]{inputDir+"001.txt",
-//              inputDir+"002.txt",
-//              inputDir+"003.txt",
-//              inputDir+"004.txt",
-//              inputDir+"005.txt",
-//              inputDir+"006.txt",
-//              inputDir+"007.txt"});
-        //WordCount w = new WordCount(1, new String[]{inputDir+"dummy.txt"});
-
         String path = "/Users/aayushgupta/IdeaProjects/project-2-group-2/";
         InputStreamReader reader = new InputStreamReader(new FileInputStream(path+"fileNames.txt"), "UTF-8");
         Scanner scanner = new Scanner(reader);
@@ -174,7 +163,7 @@ public class WordCount implements Master, Runnable{
         }
         String[] pathArr = new String[paths.size()];
         for(int i=0; i<pathArr.length; i++) pathArr[i] = paths.get(i);
-        WordCount w = new WordCount(4, pathArr);
+        WordCount w = new WordCount(15, pathArr);
         w.run();
     }
 
@@ -199,33 +188,35 @@ public class WordCount implements Master, Runnable{
                         ActiveWorkers activeWorkers = ActiveWorkers.getInstance();
                         inactive = new HashSet<Integer>(InactiveWorkers.getInstance().set);
                         System.out.println("Master(Main)(run): Processing Size:" + processing.map.size() + " " + "Pending Size:" + pending.queue.size() + "\n");
-                        if (pending.queue.isEmpty() && processing.map.isEmpty()) {
-                            System.out.println("Master(Main)(run): Starting merge\n");
-                            flag = true;
-                            break;
-                        } else if (inactive.size() > 0) {
-                            System.out.println("Master(Main)(run): Inactive Workers found: "+inactive.size()+"\n");
-                            for (int id : inactive) {
-                                System.out.println("Master(Main)(run): Creating worker for: "+id+"\n");
-                                this.curWorkerID = id;
-                                this.createWorker();
+                        synchronized (processing.map) {
+                            if (pending.queue.isEmpty() && processing.map.isEmpty()) {
+                                System.out.println("Master(Main)(run): Starting merge\n");
+                                flag = true;
+                                break;
+                            } else if (inactive.size() > 0 && !pending.queue.isEmpty()) {
+                                System.out.println("Master(Main)(run): Inactive Workers found: " + inactive.size() + "\n");
+                                for (int id : inactive) {
+                                    System.out.println("Master(Main)(run): Creating worker for: " + id + "\n");
+                                    this.curWorkerID = id;
+                                    this.createWorker();
+                                }
+                            } else {
+                                System.out.println("Master(Main)(run): Still processing\n");
                             }
-                        } else {
-                            System.out.println("Master(Main)(run): Still processing\n");
                         }
                     } finally {
                         lock.unlock();
+                        System.out.println("Master: Lock Released");
+
                     }
                 }
             }
             if (flag) {
-                /*
                 Collection<Process> activeWorkers = getActiveProcess();
                 for(Process a : activeWorkers)
                 {
                     a.destroyForcibly();
                 }
-                */
                 if (merge()) {
                     System.out.println("Master(Main)(run): Merge successful\n");
                 }
@@ -255,43 +246,22 @@ public boolean merge() throws IOException
     File[] paths;
     try
     {
-        //System.out.println(inputFilename);
         file = new File(outputDir);
         paths = file.listFiles();
         for(File f : paths)
         {
             if(f.isHidden()) continue;
             int i=0;
-            //reader = new FileReader(f);
-            /*
-            reader = new InputStreamReader(new FileInputStream(f), "UTF-8");
-            scanner = new Scanner(reader);
-            scanner.useDelimiter("\n");
-             */
-            //System.out.println(f);
             fileReader = new FileReader(f);
             bufferedReader = new BufferedReader(fileReader);
             String line = null;
             while((line  = bufferedReader.readLine()) != null)
             {
                 String[] values = line.trim().split(" : ");
-                //String[] values = s.split(" ");
                 String word = values[0].trim();
                 String count = values[1].trim();
-                //System.out.println(word + " "+ count);
                 map.put(word, map.getOrDefault(word, 0)+Integer.parseInt(count));
             }
-            /*
-            while(scanner.hasNext())
-            {
-                String s = scanner.next();
-                String[] values = s.split(" ");
-                String word = values[0].trim();
-                String count = values[2].trim();
-                //System.out.println(word + " "+ count);
-                map.put(word, map.getOrDefault(word, 0)+Integer.parseInt(count));
-            }
-             */
         }
         System.out.println("Master(Main)(merge): Done mapping\n");
         for(Map.Entry<String, Integer> entry : map.entrySet())
@@ -312,12 +282,8 @@ public boolean merge() throws IOException
             {
                 sb.append("\n");
             }
-            //System.out.println(sb.toString());
-            //this.outputstream.print(sb.toString());
             outStream.writeBytes(sb.toString());
         }
-        //this.outputstream.print("\n");
-        for(File f : paths) f.delete();
         return true;
     }
     catch (FileNotFoundException e)
@@ -458,67 +424,10 @@ public Collection<Process> getActiveProcess() {
                 Thread masterIOThread = new Thread(mio);
                 masterIOThread.start();
                 System.out.println("Master(Main)(createWorker): Created Worker: " +  curWorkerID+"\n");
-
-                //this.activeWorkers[curWorkerID] = true;
-
-
-                //process.waitFor();
-                //Process p = Runtime.getRuntime().exec("java Worker 0 50001")
-            /*
-            Thread.sleep(10000);
-            process.destroy();
-            if(process.isAlive())
-                process.destroyForcibly();
-             */
-            /*
-            if(this.test(55001, 0, inputDir+"king-james-version-bible.txt", outputDir+"out.txt"))
-            {
-                process.destroyForcibly();
-            }
-
-             */
             } catch (IOException e) {
                 System.out.println(e.getStackTrace());
             }
 
-        }
-    }
-    public boolean test(int socket, int workerID, String inputFilepath, String outFilepath) throws IOException
-    {
-        ServerSocket sc = null;
-        Socket scc = null;
-        BufferedReader bfr = null;
-        DataOutputStream outputStream = null;
-        try {
-            sc = new ServerSocket(socket);
-            scc = sc.accept();
-            outputStream = new DataOutputStream(scc.getOutputStream());
-            String filepath = inputFilepath + " " + outFilepath;
-            outputStream.writeBytes(filepath + "\n");
-            bfr = new BufferedReader(new InputStreamReader(scc.getInputStream()));
-            String data = null;
-            data = bfr.readLine();
-            if (data == null) {
-                //handle dead condition
-                System.out.println("Worker:" + workerID + " dead");
-                return false;
-            } else if (data.equals("-1")) {
-                System.out.println("Worker failed");
-                return false;
-            } else {
-                System.out.println("Worker successful");
-                return true;
-            }
-        }
-        catch (IOException e)
-        {
-            e.printStackTrace();
-            return false;
-        }
-        finally {
-            sc.close();
-            scc.close();
-            bfr.close();
         }
     }
 }
@@ -526,7 +435,7 @@ class MasterIO implements Runnable
 {
     int socketValue;
     int workerID;
-    ReentrantLock lock;
+    static ReentrantLock lock;
     volatile boolean running;
     ServerSocket serverSocket ;
     Socket socket ;
@@ -554,7 +463,6 @@ class MasterIO implements Runnable
         try {
             serverSocket = new ServerSocket(socketValue);
             socket = serverSocket.accept();
-            //System.out.println("Socket: "+socket);
             outputStream = new DataOutputStream(socket.getOutputStream());
             while (running) {
                 int counter = 3;
@@ -562,28 +470,23 @@ class MasterIO implements Runnable
                 while(counter > 0)
                 {
                     if (lock.tryLock()) {
-                    //synchronized (this){
-                    //semaphore.acquire();
                         try
                         {
                             Pending pending = Pending.getInstance();
                             Processing processing = Processing.getInstance();
                             ActiveWorkers activeWorkers = ActiveWorkers.getInstance();
-                            if (pending.queue.isEmpty() || !activeWorkers.map.containsKey(this.workerID)) {
-                                System.out.println("Master(MasterIO)(sendIO): Pending Empty or Inactive Worker: "+workerID+"\n");
+                            synchronized (processing.map) {
+                                if (pending.queue.isEmpty() || !activeWorkers.map.containsKey(this.workerID)) {
+                                    System.out.println("Master(MasterIO)(sendIO): Pending Empty or Inactive Worker: " + workerID + "\n");
+                                    break;
+                                } else {
+                                    System.out.println("Master(MasterIO)(sendIO): Pending contains data and Active Worker: " + workerID + "\n");
+                                    inputFilepath = pending.queue.poll();
+                                    if(inputFilepath == null) break;
+                                    processing.map.put(workerID, inputFilepath);
+                                }
                                 break;
-                            } else {
-                                System.out.println("Master(MasterIO)(sendIO): Pending contains data and Active Worker: "+workerID+"\n");
-                                //System.out.println("Pending size before:"+pending.queue.size() + " thread:" + workerID);
-                                inputFilepath = pending.queue.poll();
-                                if(inputFilepath == null) break;
-                                //System.out.println("Pending size after:"+pending.queue.size()+ " thread:" + workerID);
-                                //System.out.println("Processing size before:"+processing.set.size()+ " thread:" + workerID);
-                                processing.map.put(workerID, inputFilepath);
-
-                                //System.out.println("Processing size after:"+processing.set.size()+ " thread:" + workerID);
                             }
-                            break;
                         }
                         finally {
                             lock.unlock();
@@ -607,7 +510,6 @@ class MasterIO implements Runnable
                 String data = null;
                 data = bufferedReader.readLine();
                 if (data == null || data.equals("-1")) {
-                    //handle dead condition
                     counter = 3;
                     while(counter > 0)
                     {
@@ -618,10 +520,12 @@ class MasterIO implements Runnable
                                 System.out.print("Master(MasterIO)(sendIO): Worker Dead, removing from processing: " + workerID+"\n");
                                 Processing processing = Processing.getInstance();
                                 Pending pending = Pending.getInstance();
-                                String filePath = processing.map.get(workerID);
-                                processing.map.remove(workerID);
-                                pending.queue.offer(filePath);
-                                break;
+                                synchronized (processing.map) {
+                                    String filePath = processing.map.get(workerID);
+                                    processing.map.remove(workerID);
+                                    pending.queue.offer(filePath);
+                                    break;
+                                }
                             }
                             finally {
                                 lock.unlock();
@@ -638,23 +542,25 @@ class MasterIO implements Runnable
                 else {
                     while(true)
                     {
-                        if(lock.tryLock())
+                        boolean tryLock = lock.tryLock(1, TimeUnit.SECONDS);
+                        if(tryLock)
                         {
                             try
                             {
                                 Processing processing = Processing.getInstance();
-                                //System.out.println("processing, size now(successful):  " + processing.set.size()+ " thread:" + workerID );
-                                processing.map.remove(workerID);
-                                //System.out.println("Removed from processing, size now(successful):  " + processing.set.size()+ " thread:" + workerID );
-                                break;
+                                synchronized (processing.map) {
+                                    processing.map.remove(workerID);
+                                    break;
+                                }
                             }
                             finally {
                                 lock.unlock();
                             }
                         }
+                        else continue;
                     }
                     System.out.println("Master(MasterIO)(sendIO): Worker successful: "+workerID+"\n");
-                    Thread.sleep(10000);
+                    //Thread.sleep(2000);
                     continue;
                 }
             }
@@ -662,32 +568,26 @@ class MasterIO implements Runnable
         catch(Exception e)
         {
             System.out.println("Master(MasterIO)(sendIO): Exception: "+e.getMessage()+"\n");
-            boolean tryLock = lock.tryLock(1, TimeUnit.SECONDS);
-            if(tryLock)
-            {
-                try{
-                    Processing processing = Processing.getInstance();
-                    Pending pending = Pending.getInstance();
-                    String file =  processing.map.get(workerID);
-                    pending.queue.offer(file);
-                    processing.map.remove(workerID);
+            //int counter = 5;
+            while(true) {
+                boolean tryLock = lock.tryLock(1, TimeUnit.SECONDS);
+                if (tryLock) {
+                    try {
+                        Processing processing = Processing.getInstance();
+                        Pending pending = Pending.getInstance();
+                        synchronized (processing.map) {
+                            String file = processing.map.get(workerID);
+                            pending.queue.offer(file);
+                            processing.map.remove(workerID);
+                            break;
+                        }
+                    } finally {
+                        lock.unlock();
+                    }
                 }
-                finally {
-                    lock.unlock();
-                }
+                else continue;
             }
         }
-        /*
-        catch (IOException e)
-        {
-            System.out.println("Master(MasterIO)(sendIO): IO Exception\n");
-
-        }
-        catch(InterruptedException e)
-        {
-            System.out.println("Master(MasterIO)(sendIO): Interrupted Exception\n");
-        }
-         */
         finally {
             if(outputStream!= null)
             {
@@ -707,15 +607,12 @@ class MasterIO implements Runnable
     {
         try
         {
-            //System.out.println("Thread: " + workerID + "Sleeping");
-            //Thread.sleep(10000);
             System.out.println("Master(MasterIO)(run): Starting IO for Worker: "+workerID+"\n");
-            //Thread.sleep(10000);
             sendIO();
         }
         catch(Exception e)
         {
-            System.out.println("Main IO - run() "+e.getStackTrace());
+            System.out.println("Master(MasterIO)(run): Exception in run(): "+e.getStackTrace());
         }
     }
 
@@ -727,7 +624,7 @@ class MasterHeartbeat implements Runnable
     int socket;
     int workerID;
     volatile boolean running;
-    ReentrantLock lock;
+    static ReentrantLock lock;
     public MasterHeartbeat(int _workerID, int _socket)
     {
         socket = _socket;
@@ -747,7 +644,6 @@ class MasterHeartbeat implements Runnable
         try {
             sc = new ServerSocket(socket);
             scc = sc.accept();
-            //System.out.println("Socket: "+socket);
             String lastInputFilepath = "";
             while(running){
                 Thread.sleep(3000);
@@ -756,7 +652,6 @@ class MasterHeartbeat implements Runnable
                 data = bfr.readLine();
                 if(data == null)
                 {
-                    //handle dead condition
                     System.out.println("Master(MasterHeartbeat)(listen): Worker: "+ workerID + " dead\n");
                     if(lock.tryLock())
                     {
@@ -772,19 +667,13 @@ class MasterHeartbeat implements Runnable
                             lock.unlock();
                         }
                     }
-                    else
-                    {
+                    else {
                         Thread.sleep(1000);
                     }
-                    //remove from active wrokers
-                    //stop master heartbeat
-                    //end
                 }
                 else {
-                    //ok
                     System.out.println("Master(MasterHeartbeat)(listen): Worker Alive: " + workerID);
                 }
-                //System.out.println("Inside main heartbeat");
             }
         }
         catch (IOException e)

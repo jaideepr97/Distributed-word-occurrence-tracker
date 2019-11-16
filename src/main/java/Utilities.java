@@ -1,7 +1,11 @@
+import java.io.BufferedReader;
+import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.net.DatagramSocket;
 import java.net.ServerSocket;
+import java.net.Socket;
 import java.util.Comparator;
 
 public class Utilities {
@@ -21,31 +25,45 @@ public class Utilities {
         }
     }
 
-
-    private static final String ALPHA_NUMERIC_STRING = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    public static String randomAlphaNumeric(int count) {
-        StringBuilder builder = new StringBuilder();
-        while (count-- != 0) {
-            int character = (int)(Math.random()*ALPHA_NUMERIC_STRING.length());
-            builder.append(ALPHA_NUMERIC_STRING.charAt(character));
-        }
-        return builder.toString();
-    }
-    public static synchronized long getPidOfProcess(Process p) {
-        long pid = -1;
-
+    public static boolean test(int socket, int workerID, String inputFilepath, String outFilepath) throws IOException
+    {
+        ServerSocket sc = null;
+        Socket scc = null;
+        BufferedReader bfr = null;
+        DataOutputStream outputStream = null;
         try {
-            if (p.getClass().getName().equals("java.lang.UNIXProcess")) {
-                Field f = p.getClass().getDeclaredField("pid");
-                f.setAccessible(true);
-                pid = f.getLong(p);
-                f.setAccessible(false);
+            sc = new ServerSocket(socket);
+            scc = sc.accept();
+            outputStream = new DataOutputStream(scc.getOutputStream());
+            String filepath = inputFilepath + " " + outFilepath;
+            outputStream.writeBytes(filepath + "\n");
+            bfr = new BufferedReader(new InputStreamReader(scc.getInputStream()));
+            String data = null;
+            data = bfr.readLine();
+            if (data == null) {
+                //handle dead condition
+                System.out.println("Worker:" + workerID + " dead");
+                return false;
+            } else if (data.equals("-1")) {
+                System.out.println("Worker failed");
+                return false;
+            } else {
+                System.out.println("Worker successful");
+                return true;
             }
-        } catch (Exception e) {
-            pid = -1;
         }
-        return pid;
+        catch (IOException e)
+        {
+            e.printStackTrace();
+            return false;
+        }
+        finally {
+            sc.close();
+            scc.close();
+            bfr.close();
+        }
     }
+
     public static boolean checkPortAvailability(int port) {
         if (port < 0 || port > 65535) {
             throw new IllegalArgumentException("Invalid start port: " + port);
