@@ -24,7 +24,9 @@ for filename in sys.argv[1:]:
 # Sort in reverse order by frequency.
 sort1 = sorted(wordcount.iteritems(), key=operator.itemgetter(0))
 sort2 = sorted(sort1, key=operator.itemgetter(1), reverse = True)
-
+f = open('out_ex.txt', 'w');
 for pair in sort2:
-    print ("%s : %s" %(pair[0] , pair[1]))
+    f.write("%s : %s" %(pair[1] , pair[0]))
+    f.write('\n')
+f.close()
                           
